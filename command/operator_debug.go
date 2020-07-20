@@ -50,12 +50,12 @@ type external struct {
 }
 
 const (
-	userAgent = "nomad debug"
+	userAgent = "nomad operator debug"
 )
 
 func (c *OperatorDebugCommand) Help() string {
 	helpText := `
-Usage: nomad debug [options]
+Usage: nomad operator debug [options]
 
   Build an archive containing Nomad cluster configuration and state, and Consul and Vault
   status. Include logs and pprof profiles for selected servers and client nodes.
