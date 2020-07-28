@@ -146,6 +146,7 @@ func parseService(o *ast.ObjectItem) (*api.Service, error) {
 func parseConnect(co *ast.ObjectItem) (*api.ConsulConnect, error) {
 	valid := []string{
 		"native",
+		"gateway",
 		"sidecar_service",
 		"sidecar_task",
 	}
@@ -160,6 +161,7 @@ func parseConnect(co *ast.ObjectItem) (*api.ConsulConnect, error) {
 		return nil, err
 	}
 
+	delete(m, "gateway")
 	delete(m, "sidecar_service")
 	delete(m, "sidecar_task")
 
@@ -172,6 +174,17 @@ func parseConnect(co *ast.ObjectItem) (*api.ConsulConnect, error) {
 		connectList = ot.List
 	} else {
 		return nil, fmt.Errorf("connect should be an object")
+	}
+
+	// Parse the gateway
+	o := connectList.Filter("gateway")
+	if len(o.Items) > 1 {
+		return nil, fmt.Errorf("only one 'gateway' block allowed per task")
+	} else if len(o.Items) == 1 {
+		g, err := parseGateway(o.Items[0])
+		if err != nil {
+			return nil, fmt.Errorf("gateway, %v", err)
+		}
 	}
 
 	// Parse the sidecar_service
@@ -205,6 +218,14 @@ func parseConnect(co *ast.ObjectItem) (*api.ConsulConnect, error) {
 	connect.SidecarTask = t
 
 	return &connect, nil
+}
+
+func parseGateway(o *ast.ObjectItem) (*api.ConsulGateway, error) {
+	valid := []string{
+		"proxy",
+		"ingress",
+	}
+	return nil, nil
 }
 
 func parseSidecarService(o *ast.ObjectItem) (*api.ConsulSidecarService, error) {

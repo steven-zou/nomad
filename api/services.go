@@ -280,3 +280,29 @@ type ConsulExposePath struct {
 	LocalPathPort int    `mapstructure:"local_path_port"`
 	ListenerPort  string `mapstructure:"listener_port"`
 }
+
+type ConsulGateway struct {
+	// Proxy is used to configure the Envoy instance acting as the gateway.
+	Proxy *ConsulGatewayProxy
+
+	// Ingress is in progress.
+	Ingress *ConsulIngressConfigEntry
+
+	// Terminating is not yet supported.
+	Terminating *ConsulTerminatingConfigEntry
+
+	// Mesh is not yet supported.
+	Mesh *ConsulMeshConfigEntry
+}
+
+type ConsulIngressConfigEntry struct {
+}
+
+type ConsulTerminatingConfigEntry struct {
+}
+
+type ConsulMeshConfigEntry struct {
+}
+
+type ConsulGatewayProxy struct {
+}
