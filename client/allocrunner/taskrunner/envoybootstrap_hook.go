@@ -124,7 +124,6 @@ func (h *envoyBootstrapHook) Prestart(ctx context.Context, req *interfaces.TaskP
 			break
 		}
 	}
-
 	if service == nil {
 		return errors.New("connect proxy sidecar task exists but no services configured with a sidecar")
 	}

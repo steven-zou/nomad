@@ -142,6 +142,7 @@ func (s *Service) Canonicalize(t *Task, tg *TaskGroup, job *Job) {
 // ConsulConnect represents a Consul Connect jobspec stanza.
 type ConsulConnect struct {
 	Native         bool
+	Gateway        *ConsulGateway
 	SidecarService *ConsulSidecarService `mapstructure:"sidecar_service"`
 	SidecarTask    *SidecarTask          `mapstructure:"sidecar_task"`
 }
@@ -281,28 +282,73 @@ type ConsulExposePath struct {
 	ListenerPort  string `mapstructure:"listener_port"`
 }
 
+// ConsulGateway is used to configure one of the Consul Connect Gateway types.
 type ConsulGateway struct {
 	// Proxy is used to configure the Envoy instance acting as the gateway.
 	Proxy *ConsulGatewayProxy
 
-	// Ingress is in progress.
+	// Ingress represents the Consul Configuration Entry for an Ingress Gateway.
 	Ingress *ConsulIngressConfigEntry
 
 	// Terminating is not yet supported.
-	Terminating *ConsulTerminatingConfigEntry
+	// Terminating *ConsulTerminatingConfigEntry
 
 	// Mesh is not yet supported.
-	Mesh *ConsulMeshConfigEntry
+	// Mesh *ConsulMeshConfigEntry
 }
 
-type ConsulIngressConfigEntry struct {
-}
-
-type ConsulTerminatingConfigEntry struct {
-}
-
-type ConsulMeshConfigEntry struct {
-}
-
+// ConsulGatewayProxy is used to tune parameters of the proxy instance acting as
+// one of the forms of Connect gateways that Consul supports.
+//
+// https://www.consul.io/docs/connect/proxies/envoy#gateway-options
 type ConsulGatewayProxy struct {
+	ConnectTimeout *time.Duration `mapstructure:"connect_timeout"`
+
+	EnvoyGatewayBindTaggedAddresses bool   `mapstructure:"envoy_gateway_bind_tagged_addresses"`
+	EnvoyGatewayBindAddresses       bool   `mapstructure:"envoy_gateway_bind_addresses"`
+	EnvoyGatewayNoDefaultBind       bool   `mapstructure:"envoy_gateway_no_default_bind"`
+	EnvoyDNSDiscoveryType           string `mapstructure:"envoy_dns_discovery_type"`
+
+	Config map[string]interface{} // escape hatch
 }
+
+// ConsulGatewayTLSConfig is used to configure TLS for a gateway.
+type ConsulGatewayTLSConfig struct {
+	Enabled bool
+}
+
+type ConsulIngressService struct {
+	// Namespace is not yet supported.
+	// Namespace string
+	Name string
+
+	Hosts []string
+}
+
+// ConsulIngressListener is used to configure a listener on a Consul Ingress
+// Gateway.
+type ConsulIngressListener struct {
+	Port     int
+	Protocol string
+	Services []*ConsulIngressService
+}
+
+// ConsulIngressConfigEntry represents the Consul Configuration Entry type for
+// an Ingress Gateway.
+//
+// https://www.consul.io/docs/agent/config-entries/ingress-gateway#available-fields
+type ConsulIngressConfigEntry struct {
+	// Namespace is not yet supported.
+	// Namespace string
+
+	TLS       *ConsulGatewayTLSConfig
+	Listeners []*ConsulIngressListener
+}
+
+// ConsulTerminatingConfigEntry is not yet supported.
+// type ConsulTerminatingConfigEntry struct {
+// }
+
+// ConsulMeshConfigEntry is not yet supported.
+// type ConsulMeshConfigEntry struct {
+// }

@@ -185,10 +185,11 @@ func parseConnect(co *ast.ObjectItem) (*api.ConsulConnect, error) {
 		if err != nil {
 			return nil, fmt.Errorf("gateway, %v", err)
 		}
+		connect.Gateway = g
 	}
 
 	// Parse the sidecar_service
-	o := connectList.Filter("sidecar_service")
+	o = connectList.Filter("sidecar_service")
 	if len(o.Items) == 0 {
 		return &connect, nil
 	}
@@ -225,7 +226,299 @@ func parseGateway(o *ast.ObjectItem) (*api.ConsulGateway, error) {
 		"proxy",
 		"ingress",
 	}
-	return nil, nil
+
+	if err := helper.CheckHCLKeys(o.Val, valid); err != nil {
+		return nil, multierror.Prefix(err, "gateway ->")
+	}
+
+	var gateway api.ConsulGateway
+	var m map[string]interface{}
+	if err := hcl.DecodeObject(&m, o.Val); err != nil {
+		return nil, err
+	}
+
+	delete(m, "proxy")
+	delete(m, "ingress")
+
+	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
+		WeaklyTypedInput: true,
+		Result:           &gateway,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := dec.Decode(m); err != nil {
+		return nil, fmt.Errorf("gateway: %v", err)
+	}
+
+	// list of parameters
+	var listVal *ast.ObjectList
+	if ot, ok := o.Val.(*ast.ObjectType); ok {
+		listVal = ot.List
+	} else {
+		return nil, fmt.Errorf("proxy: should be an object")
+	}
+
+	// extract and parse the proxy block
+	po := listVal.Filter("proxy")
+	if len(po.Items) != 1 {
+		return nil, fmt.Errorf("must have one 'proxy' block")
+	}
+	proxy, err := parseGatewayProxy(po.Items[0])
+	if err != nil {
+		return nil, fmt.Errorf("proxy, %v", err)
+	}
+	gateway.Proxy = proxy
+
+	// extract and parse the ingress block
+	io := listVal.Filter("ingress")
+	if len(io.Items) != 1 {
+		// in the future, may be terminating or mesh block instead
+		return nil, fmt.Errorf("must have one 'ingress' block")
+	}
+	ingress, err := parseIngressConfigEntry(io.Items[0])
+	if err != nil {
+		return nil, fmt.Errorf("ingress, %v", err)
+	}
+	gateway.Ingress = ingress
+
+	return &gateway, nil
+}
+
+// parseGatewayProxy parses envoy gateway proxy options supported by Consul.
+//
+// consul.io/docs/connect/proxies/envoy#gateway-options
+func parseGatewayProxy(o *ast.ObjectItem) (*api.ConsulGatewayProxy, error) {
+	valid := []string{
+		"connect_timeout",
+		"envoy_gateway_bind_tagged_addresses",
+		"envoy_gateway_bind_addresses",
+		"envoy_gateway_no_default_bind",
+		"envoy_dns_discovery_type",
+		"config",
+	}
+
+	if err := helper.CheckHCLKeys(o.Val, valid); err != nil {
+		return nil, multierror.Prefix(err, "proxy ->")
+	}
+
+	var proxy api.ConsulGatewayProxy
+	var m map[string]interface{}
+	if err := hcl.DecodeObject(&m, o.Val); err != nil {
+		return nil, err
+	}
+
+	delete(m, "config")
+
+	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
+		WeaklyTypedInput: true,
+		Result:           &proxy,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := dec.Decode(m); err != nil {
+		return nil, fmt.Errorf("proxy: %v", err)
+	}
+
+	// need to parse the opaque config if present
+
+	var listVal *ast.ObjectList
+	if ot, ok := o.Val.(*ast.ObjectType); ok {
+		listVal = ot.List
+	} else {
+		return nil, fmt.Errorf("proxy: should be an object")
+	}
+
+	if co := listVal.Filter("config"); len(co.Items) > 1 {
+		return nil, fmt.Errorf("only 1 meta object supported")
+	} else if len(co.Items) == 1 {
+		var mSlice []map[string]interface{}
+		if err := hcl.DecodeObject(&mSlice, co.Items[0].Val); err != nil {
+			return nil, err
+		}
+
+		if len(mSlice) > 1 {
+			return nil, fmt.Errorf("only 1 meta object supported")
+		}
+
+		m := mSlice[0]
+
+		if err := mapstructure.WeakDecode(m, &proxy.Config); err != nil {
+			return nil, err
+		}
+
+		proxy.Config = flattenMapSlice(proxy.Config)
+	}
+
+	return &proxy, nil
+}
+
+func parseConsulIngressService(o *ast.ObjectItem) (*api.ConsulIngressService, error) {
+	valid := []string{
+		"name",
+		"hosts",
+	}
+
+	if err := helper.CheckHCLKeys(o.Val, valid); err != nil {
+		return nil, multierror.Prefix(err, "service ->")
+	}
+
+	var service api.ConsulIngressService
+	var m map[string]interface{}
+	if err := hcl.DecodeObject(&m, o.Val); err != nil {
+		return nil, err
+	}
+
+	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		Result: &service,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := dec.Decode(m); err != nil {
+		return nil, err
+	}
+
+	return &service, nil
+}
+
+func parseConsulIngressListener(o *ast.ObjectItem) (*api.ConsulIngressListener, error) {
+	valid := []string{
+		"port",
+		"protocol",
+		"service",
+	}
+
+	if err := helper.CheckHCLKeys(o.Val, valid); err != nil {
+		return nil, multierror.Prefix(err, "listener ->")
+	}
+
+	var listener api.ConsulIngressListener
+	var m map[string]interface{}
+	if err := hcl.DecodeObject(&m, o.Val); err != nil {
+		return nil, err
+	}
+
+	delete(m, "service")
+
+	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		Result: &listener,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := dec.Decode(m); err != nil {
+		return nil, err
+	}
+
+	// Parse services
+
+	var listVal *ast.ObjectList
+	if ot, ok := o.Val.(*ast.ObjectType); ok {
+		listVal = ot.List
+	} else {
+		return nil, fmt.Errorf("listener: should be an object")
+	}
+
+	so := listVal.Filter("service")
+	if len(so.Items) > 0 {
+		listener.Services = make([]*api.ConsulIngressService, len(so.Items))
+		for i := range so.Items {
+			is, err := parseConsulIngressService(so.Items[i])
+			if err != nil {
+				return nil, err
+			}
+			listener.Services[i] = is
+		}
+	}
+	return &listener, nil
+}
+
+func parseConsulGatewayTLS(o *ast.ObjectItem) (*api.ConsulGatewayTLSConfig, error) {
+	valid := []string{
+		"enabled",
+	}
+
+	if err := helper.CheckHCLKeys(o.Val, valid); err != nil {
+		return nil, multierror.Prefix(err, "tls ->")
+	}
+
+	var tls api.ConsulGatewayTLSConfig
+	var m map[string]interface{}
+	if err := hcl.DecodeObject(&m, o.Val); err != nil {
+		return nil, err
+	}
+
+	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		Result: &tls,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := dec.Decode(m); err != nil {
+		return nil, err
+	}
+
+	return &tls, nil
+}
+
+func parseIngressConfigEntry(o *ast.ObjectItem) (*api.ConsulIngressConfigEntry, error) {
+	valid := []string{
+		"tls",
+		"listener",
+	}
+
+	if err := helper.CheckHCLKeys(o.Val, valid); err != nil {
+		return nil, multierror.Prefix(err, "ingress ->")
+	}
+
+	var ingress api.ConsulIngressConfigEntry
+	var m map[string]interface{}
+	if err := hcl.DecodeObject(&m, o.Val); err != nil {
+		return nil, err
+	}
+
+	delete(m, "tls")
+	delete(m, "listener")
+
+	// Parse tls and listener(s)
+
+	var listVal *ast.ObjectList
+	if ot, ok := o.Val.(*ast.ObjectType); ok {
+		listVal = ot.List
+	} else {
+		return nil, fmt.Errorf("ingress: should be an object")
+	}
+
+	if to := listVal.Filter("tls"); len(to.Items) > 1 {
+		return nil, fmt.Errorf("only 1 tls object supported")
+	} else if len(to.Items) == 1 {
+		if tls, err := parseConsulGatewayTLS(to.Items[0]); err != nil {
+			return nil, err
+		} else {
+			ingress.TLS = tls
+		}
+	}
+
+	lo := listVal.Filter("listener")
+	if len(lo.Items) > 0 {
+		ingress.Listeners = make([]*api.ConsulIngressListener, len(lo.Items))
+		for i := range lo.Items {
+			listener, err := parseConsulIngressListener(lo.Items[i])
+			if err != nil {
+				return nil, err
+			}
+			ingress.Listeners[i] = listener
+		}
+	}
+
+	return &ingress, nil
 }
 
 func parseSidecarService(o *ast.ObjectItem) (*api.ConsulSidecarService, error) {
@@ -361,14 +654,14 @@ func parseProxy(o *ast.ObjectItem) (*api.ConsulProxy, error) {
 		return nil, fmt.Errorf("proxy: %v", err)
 	}
 
+	// Parse upstreams, expose, and config
+
 	var listVal *ast.ObjectList
 	if ot, ok := o.Val.(*ast.ObjectType); ok {
 		listVal = ot.List
 	} else {
 		return nil, fmt.Errorf("proxy: should be an object")
 	}
-
-	// Parse the proxy
 
 	uo := listVal.Filter("upstreams")
 	if len(uo.Items) > 0 {
