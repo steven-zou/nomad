@@ -380,7 +380,6 @@ type ConsulGatewayTLSConfig struct {
 }
 
 func (tc *ConsulGatewayTLSConfig) Canonicalize() {
-	// nothing to do
 }
 
 func (tc *ConsulGatewayTLSConfig) Copy() *ConsulGatewayTLSConfig {

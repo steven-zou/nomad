@@ -270,6 +270,48 @@ func TestService_ConsulIngressListener_Copy(t *testing.T) {
 
 func TestService_ConsulIngressConfigEntry_Canonicalize(t *testing.T) {
 	t.Parallel()
+
+	t.Run("nil", func(t *testing.T) {
+		c := (*ConsulIngressConfigEntry)(nil)
+		c.Canonicalize()
+		require.Nil(t, c)
+	})
+
+	t.Run("empty fields", func(t *testing.T) {
+		c := &ConsulIngressConfigEntry{
+			TLS:       nil,
+			Listeners: []*ConsulIngressListener{},
+		}
+		c.Canonicalize()
+		require.Nil(t, c.TLS)
+		require.Nil(t, c.Listeners)
+	})
+
+	t.Run("complete", func(t *testing.T) {
+		c := &ConsulIngressConfigEntry{
+			TLS: &ConsulGatewayTLSConfig{Enabled: true},
+			Listeners: []*ConsulIngressListener{{
+				Port:     9090,
+				Protocol: "http",
+				Services: []*ConsulIngressService{{
+					Name:  "service1",
+					Hosts: []string{"1.1.1.1"},
+				}},
+			}},
+		}
+		c.Canonicalize()
+		require.Equal(t, &ConsulIngressConfigEntry{
+			TLS: &ConsulGatewayTLSConfig{Enabled: true},
+			Listeners: []*ConsulIngressListener{{
+				Port:     9090,
+				Protocol: "http",
+				Services: []*ConsulIngressService{{
+					Name:  "service1",
+					Hosts: []string{"1.1.1.1"},
+				}},
+			}},
+		}, c)
+	})
 }
 
 func TestService_ConsulIngressConfigEntry_Copy(t *testing.T) {
