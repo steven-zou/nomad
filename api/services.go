@@ -297,6 +297,25 @@ type ConsulGateway struct {
 	// Mesh *ConsulMeshConfigEntry
 }
 
+func (cg *ConsulGateway) Canonicalize() {
+	if cg == nil {
+		return
+	}
+	cg.Proxy.Canonicalize()
+	cg.Ingress.Canonicalize()
+}
+
+func (cg *ConsulGateway) Copy() *ConsulGateway {
+	if cg == nil {
+		return nil
+	}
+
+	return &ConsulGateway{
+		Proxy:   cg.Proxy.Copy(),
+		Ingress: cg.Ingress.Copy(),
+	}
+}
+
 // ConsulGatewayProxy is used to tune parameters of the proxy instance acting as
 // one of the forms of Connect gateways that Consul supports.
 //
@@ -312,9 +331,66 @@ type ConsulGatewayProxy struct {
 	Config map[string]interface{} // escape hatch
 }
 
+func (cgp *ConsulGatewayProxy) Canonicalize() {
+	if cgp == nil {
+		return
+	}
+
+	if cgp.ConnectTimeout == nil {
+		// same as the default from consul
+		cgp.ConnectTimeout = timeToPtr(5 * time.Second)
+	}
+
+	if cgp.EnvoyDNSDiscoveryType == "" {
+		// same as default from consul
+		cgp.EnvoyDNSDiscoveryType = "LOGICAL_DNS"
+	}
+
+	if len(cgp.Config) == 0 {
+		cgp.Config = nil
+	}
+}
+
+func (cgp *ConsulGatewayProxy) Copy() *ConsulGatewayProxy {
+	if cgp == nil {
+		return nil
+	}
+
+	var config map[string]interface{} = nil
+	if cgp.Config != nil {
+		config = make(map[string]interface{}, len(cgp.Config))
+		for k, v := range cgp.Config {
+			config[k] = v
+		}
+	}
+
+	return &ConsulGatewayProxy{
+		ConnectTimeout:                  timeToPtr(*cgp.ConnectTimeout),
+		EnvoyGatewayBindTaggedAddresses: cgp.EnvoyGatewayBindTaggedAddresses,
+		EnvoyGatewayBindAddresses:       cgp.EnvoyGatewayBindAddresses,
+		EnvoyGatewayNoDefaultBind:       cgp.EnvoyGatewayNoDefaultBind,
+		EnvoyDNSDiscoveryType:           cgp.EnvoyDNSDiscoveryType,
+		Config:                          config,
+	}
+}
+
 // ConsulGatewayTLSConfig is used to configure TLS for a gateway.
 type ConsulGatewayTLSConfig struct {
 	Enabled bool
+}
+
+func (tc *ConsulGatewayTLSConfig) Canonicalize() {
+	// nothing to do
+}
+
+func (tc *ConsulGatewayTLSConfig) Copy() *ConsulGatewayTLSConfig {
+	if tc == nil {
+		return nil
+	}
+
+	return &ConsulGatewayTLSConfig{
+		Enabled: tc.Enabled,
+	}
 }
 
 type ConsulIngressService struct {
@@ -325,12 +401,74 @@ type ConsulIngressService struct {
 	Hosts []string
 }
 
+func (cis *ConsulIngressService) Canonicalize() {
+	if cis == nil {
+		return
+	}
+
+	if len(cis.Hosts) == 0 {
+		cis.Hosts = nil
+	}
+}
+
+func (cis *ConsulIngressService) Copy() *ConsulIngressService {
+	if cis == nil {
+		return nil
+	}
+
+	var hosts []string = nil
+	if n := len(cis.Hosts); n > 0 {
+		hosts = make([]string, n)
+		copy(hosts, cis.Hosts)
+	}
+
+	return &ConsulIngressService{
+		Name:  cis.Name,
+		Hosts: hosts,
+	}
+}
+
 // ConsulIngressListener is used to configure a listener on a Consul Ingress
 // Gateway.
 type ConsulIngressListener struct {
 	Port     int
 	Protocol string
 	Services []*ConsulIngressService
+}
+
+func (cil *ConsulIngressListener) Canonicalize() {
+	if cil == nil {
+		return
+	}
+
+	if cil.Protocol == "" {
+		// same as default from consul
+		cil.Protocol = "tcp"
+	}
+
+	if len(cil.Services) == 0 {
+		cil.Services = nil
+	}
+}
+
+func (cil *ConsulIngressListener) Copy() *ConsulIngressListener {
+	if cil == nil {
+		return nil
+	}
+
+	var services []*ConsulIngressService = nil
+	if n := len(cil.Services); n > 0 {
+		services = make([]*ConsulIngressService, n)
+		for i := 0; i < n; i++ {
+			services[i] = cil.Services[i].Copy()
+		}
+	}
+
+	return &ConsulIngressListener{
+		Port:     cil.Port,
+		Protocol: cil.Protocol,
+		Services: services,
+	}
 }
 
 // ConsulIngressConfigEntry represents the Consul Configuration Entry type for
@@ -343,6 +481,41 @@ type ConsulIngressConfigEntry struct {
 
 	TLS       *ConsulGatewayTLSConfig
 	Listeners []*ConsulIngressListener
+}
+
+func (cice *ConsulIngressConfigEntry) Canonicalize() {
+	if cice == nil {
+		return
+	}
+
+	cice.TLS.Canonicalize()
+
+	if len(cice.Listeners) == 0 {
+		cice.Listeners = nil
+	}
+
+	for _, listener := range cice.Listeners {
+		listener.Canonicalize()
+	}
+}
+
+func (cice *ConsulIngressConfigEntry) Copy() *ConsulIngressConfigEntry {
+	if cice == nil {
+		return nil
+	}
+
+	var listeners []*ConsulIngressListener = nil
+	if n := len(cice.Listeners); n > 0 {
+		listeners = make([]*ConsulIngressListener, n)
+		for i := 0; i < n; i++ {
+			listeners[i] = cice.Listeners[i].Copy()
+		}
+	}
+
+	return &ConsulIngressConfigEntry{
+		TLS:       cice.TLS.Copy(),
+		Listeners: listeners,
+	}
 }
 
 // ConsulTerminatingConfigEntry is not yet supported.

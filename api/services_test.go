@@ -227,3 +227,78 @@ func TestService_Connect_SidecarTask_Canonicalize(t *testing.T) {
 		require.Equal(t, exp, st.Resources)
 	})
 }
+
+func TestService_ConsulGateway_Canonicalize(t *testing.T) {
+	t.Parallel()
+}
+
+func TestService_ConsulGateway_Copy(t *testing.T) {
+	t.Parallel()
+}
+
+func TestService_ConsulGatewayProxy_Canonicalize(t *testing.T) {
+	t.Parallel()
+}
+
+func TestService_ConsulGatewayProxy_Copy(t *testing.T) {
+	t.Parallel()
+}
+
+func TestService_ConsulGatewayTLSConfig_Canonicalize(t *testing.T) {
+	t.Parallel()
+}
+
+func TestService_ConsulGatewayTLSConfig_Copy(t *testing.T) {
+	t.Parallel()
+}
+
+func TestService_ConsulIngressService_Canonicalize(t *testing.T) {
+	t.Parallel()
+}
+
+func TestService_ConsulIngressService_Copy(t *testing.T) {
+	t.Parallel()
+}
+
+func TestService_ConsulIngressListener_Canonicalize(t *testing.T) {
+	t.Parallel()
+}
+
+func TestService_ConsulIngressListener_Copy(t *testing.T) {
+	t.Parallel()
+}
+
+func TestService_ConsulIngressConfigEntry_Canonicalize(t *testing.T) {
+	t.Parallel()
+}
+
+func TestService_ConsulIngressConfigEntry_Copy(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil", func(t *testing.T) {
+		result := (*ConsulIngressConfigEntry)(nil).Copy()
+		require.Nil(t, result)
+	})
+
+	entry := &ConsulIngressConfigEntry{
+		TLS: &ConsulGatewayTLSConfig{
+			Enabled: true,
+		},
+		Listeners: []*ConsulIngressListener{{
+			Port:     1111,
+			Protocol: "http",
+			Services: []*ConsulIngressService{{
+				Name:  "service1",
+				Hosts: []string{"1.1.1.1", "1.1.1.1:9000"},
+			}, {
+				Name:  "service2",
+				Hosts: []string{"2.2.2.2"},
+			}},
+		}},
+	}
+
+	t.Run("complete", func(t *testing.T) {
+		result := entry.Copy()
+		require.Equal(t, entry, result)
+	})
+}
