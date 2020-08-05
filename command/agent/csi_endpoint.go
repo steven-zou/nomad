@@ -129,7 +129,7 @@ func (s *HTTPServer) csiVolumePut(resp http.ResponseWriter, req *http.Request) (
 }
 
 func (s *HTTPServer) csiVolumeDelete(id string, resp http.ResponseWriter, req *http.Request) (interface{}, error) {
-	if req.Method != "DELETE" {
+	if req.Method != http.MethodDelete {
 		return nil, CodedError(405, ErrInvalidMethod)
 	}
 
@@ -161,7 +161,7 @@ func (s *HTTPServer) csiVolumeDelete(id string, resp http.ResponseWriter, req *h
 
 // CSIPluginsRequest lists CSI plugins
 func (s *HTTPServer) CSIPluginsRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
-	if req.Method != "GET" {
+	if req.Method != http.MethodGet {
 		return nil, CodedError(405, ErrInvalidMethod)
 	}
 
@@ -193,7 +193,7 @@ func (s *HTTPServer) CSIPluginsRequest(resp http.ResponseWriter, req *http.Reque
 
 // CSIPluginSpecificRequest list the job with CSIInfo
 func (s *HTTPServer) CSIPluginSpecificRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
-	if req.Method != "GET" {
+	if req.Method != http.MethodGet {
 		return nil, CodedError(405, ErrInvalidMethod)
 	}
 
