@@ -6,38 +6,38 @@ job "connect_gateway_ingress" {
       connect {
         gateway {
           proxy {
-            connect_timeout = "3s"
+            connect_timeout                     = "3s"
             envoy_gateway_bind_tagged_addresses = true
-            envoy_gateway_bind_addresses = true
-            envoy_gateway_no_default_bind = true
-            envoy_dns_discovery_type = "LOGICAL_DNS"
+            envoy_gateway_bind_addresses        = true
+            envoy_gateway_no_default_bind       = true
+            envoy_dns_discovery_type            = "LOGICAL_DNS"
             config {
               foo = "bar"
             }
           }
           ingress {
-            tls  {
+            tls {
               enabled = true
             }
 
             listener {
-              port = 8001
+              port     = 8001
               protocol = "tcp"
               service {
-                name = "service1"
+                name  = "service1"
                 hosts = ["127.0.0.1:8001", "[::1]:8001"]
               }
               service {
-                name = "service2"
+                name  = "service2"
                 hosts = ["10.0.0.1:8001"]
               }
             }
 
             listener {
-              port = 8080
+              port     = 8080
               protocol = "http"
               service {
-                name = "nginx"
+                name  = "nginx"
                 hosts = ["2.2.2.2:8080"]
               }
             }
