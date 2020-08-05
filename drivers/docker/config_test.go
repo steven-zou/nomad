@@ -25,6 +25,7 @@ func TestConfig_ParseHCL(t *testing.T) {
 				Devices:      []DockerDevice{},
 				Mounts:       []DockerMount{},
 				CPUCFSPeriod: 100000,
+				PullTimeout:  "5m",
 			},
 		},
 	}
@@ -57,6 +58,7 @@ func TestConfig_ParseJSON(t *testing.T) {
 				Mounts:       []DockerMount{},
 				Devices:      []DockerDevice{},
 				CPUCFSPeriod: 100000,
+				PullTimeout:  "5m",
 			},
 		},
 		{
@@ -67,6 +69,7 @@ func TestConfig_ParseJSON(t *testing.T) {
 				Mounts:       []DockerMount{},
 				Devices:      []DockerDevice{},
 				CPUCFSPeriod: 100000,
+				PullTimeout:  "5m",
 			},
 		},
 		{
@@ -77,6 +80,7 @@ func TestConfig_ParseJSON(t *testing.T) {
 				Mounts:       []DockerMount{},
 				Devices:      []DockerDevice{},
 				CPUCFSPeriod: 100000,
+				PullTimeout:  "5m",
 			},
 		},
 		{
@@ -87,6 +91,7 @@ func TestConfig_ParseJSON(t *testing.T) {
 				Mounts:       []DockerMount{},
 				Devices:      []DockerDevice{},
 				CPUCFSPeriod: 100000,
+				PullTimeout:  "5m",
 			},
 		},
 	}
@@ -178,6 +183,7 @@ func TestConfig_ParseAllHCL(t *testing.T) {
 	cfgStr := `
 config {
   image = "redis:3.2"
+  pull_timeout = "15m"
   advertise_ipv6_address = true
   args = ["command_arg1", "command_arg2"]
   auth {
@@ -301,6 +307,7 @@ config {
 
 	expected := &TaskConfig{
 		Image:             "redis:3.2",
+		PullTimeout:       "15m",
 		AdvertiseIPv6Addr: true,
 		Args:              []string{"command_arg1", "command_arg2"},
 		Auth: DockerAuth{
@@ -524,6 +531,33 @@ func TestConfig_InternalCapabilities(t *testing.T) {
 
 			d := &Driver{config: &tc}
 			require.Equal(t, c.expected, d.InternalCapabilities())
+		})
+	}
+}
+
+func TestConfig_DriverConfig_InfraImagePullTimeout(t *testing.T) {
+	cases := []struct {
+		name     string
+		config   string
+		expected string
+	}{
+		{
+			name:     "default",
+			config:   `{}`,
+			expected: "5m",
+		},
+		{
+			name:     "set explicitly",
+			config:   `{ infra_image_pull_timeout = "1m" }`,
+			expected: "1m",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var tc DriverConfig
+			hclutils.NewConfigParser(configSpec).ParseHCL(t, "config "+c.config, &tc)
+			require.Equal(t, c.expected, tc.InfraImagePullTimeout)
 		})
 	}
 }
