@@ -642,7 +642,8 @@ type ConsulConnect struct {
 	// SidecarTask is non-nil if sidecar overrides are set
 	SidecarTask *SidecarTask
 
-	// todo add gateway stuff ala api
+	// Gateway is a Consul Connect Gateway Proxy.
+	Gateway *ConsulGateway
 }
 
 // Copy the stanza recursively. Returns nil if nil.
@@ -655,6 +656,7 @@ func (c *ConsulConnect) Copy() *ConsulConnect {
 		Native:         c.Native,
 		SidecarService: c.SidecarService.Copy(),
 		SidecarTask:    c.SidecarTask.Copy(),
+		Gateway:        c.Gateway.Copy(),
 	}
 }
 
@@ -668,7 +670,17 @@ func (c *ConsulConnect) Equals(o *ConsulConnect) bool {
 		return false
 	}
 
-	return c.SidecarService.Equals(o.SidecarService)
+	if !c.SidecarService.Equals(o.SidecarService) {
+		return false
+	}
+
+	// todo(shoenig) task has never been compared, should it be?
+
+	if !c.Gateway.Equals(o.Gateway) {
+		return false
+	}
+
+	return true
 }
 
 // HasSidecar checks if a sidecar task is configured.
@@ -682,22 +694,36 @@ func (c *ConsulConnect) IsNative() bool {
 }
 
 func (c *ConsulConnect) IsGateway() bool {
-	// todo
-	return false
+	return c != nil && c.Gateway != nil
 }
 
-// Validate that the Connect stanza has exactly one of Native or sidecar.
+// Validate that the Connect block represents exactly one of:
+// - Connect non-native service sidecar proxy
+// - Connect native service
+// - Connect gateway (any type)
 func (c *ConsulConnect) Validate() error {
 	if c == nil {
 		return nil
 	}
 
-	if c.IsNative() && c.HasSidecar() {
-		return fmt.Errorf("Consul Connect must be native or use a sidecar service; not both")
+	// Count the number of things actually configured. If that number is not 1,
+	// the config is not valid.
+	count := 0
+
+	if c.HasSidecar() {
+		count++
 	}
 
-	if !c.IsNative() && !c.HasSidecar() {
-		return fmt.Errorf("Consul Connect must be native or use a sidecar service or be a gateway")
+	if c.IsNative() {
+		count++
+	}
+
+	if c.IsGateway() {
+		count++
+	}
+
+	if count != 1 {
+		return fmt.Errorf("Consul Connect must be exclusively native, make use of a sidecar, or represent a Gateway")
 	}
 
 	return nil

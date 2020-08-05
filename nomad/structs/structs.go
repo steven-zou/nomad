@@ -5644,7 +5644,8 @@ func (tg *TaskGroup) Validate(j *Job) error {
 	if tg.Count < 0 {
 		mErr.Errors = append(mErr.Errors, errors.New("Task group count can't be negative"))
 	}
-	if len(tg.Tasks) == 0 {
+	if len(tg.Tasks) == 0 && !tg.UsesConnectGateway() {
+		// defining a connect gateway is an implicit task
 		mErr.Errors = append(mErr.Errors, errors.New("Missing tasks for task group"))
 	}
 	for idx, constr := range tg.Constraints {
@@ -5997,10 +5998,26 @@ func (tg *TaskGroup) LookupTask(name string) *Task {
 	return nil
 }
 
+// UsesConnect for convenience returns true if the TaskGroup contains at least
+// one service that makes use of Consul Connect features.
 func (tg *TaskGroup) UsesConnect() bool {
 	for _, service := range tg.Services {
 		if service.Connect != nil {
 			if service.Connect.IsNative() || service.Connect.HasSidecar() {
+				// todo(shoenig) probably also gateway - check uses.
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// UsesConnectGateway for convenience returns true if the TaskGroup contains at
+// least one service that makes use of Consul Connect Gateway features.
+func (tg *TaskGroup) UsesConnectGateway() bool {
+	for _, service := range tg.Services {
+		if service.Connect != nil {
+			if service.Connect.IsGateway() {
 				return true
 			}
 		}
