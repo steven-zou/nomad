@@ -297,22 +297,22 @@ type ConsulGateway struct {
 	// Mesh *ConsulMeshConfigEntry
 }
 
-func (cg *ConsulGateway) Canonicalize() {
-	if cg == nil {
+func (g *ConsulGateway) Canonicalize() {
+	if g == nil {
 		return
 	}
-	cg.Proxy.Canonicalize()
-	cg.Ingress.Canonicalize()
+	g.Proxy.Canonicalize()
+	g.Ingress.Canonicalize()
 }
 
-func (cg *ConsulGateway) Copy() *ConsulGateway {
-	if cg == nil {
+func (g *ConsulGateway) Copy() *ConsulGateway {
+	if g == nil {
 		return nil
 	}
 
 	return &ConsulGateway{
-		Proxy:   cg.Proxy.Copy(),
-		Ingress: cg.Ingress.Copy(),
+		Proxy:   g.Proxy.Copy(),
+		Ingress: g.Ingress.Copy(),
 	}
 }
 
@@ -331,45 +331,45 @@ type ConsulGatewayProxy struct {
 	Config map[string]interface{} // escape hatch
 }
 
-func (cgp *ConsulGatewayProxy) Canonicalize() {
-	if cgp == nil {
+func (p *ConsulGatewayProxy) Canonicalize() {
+	if p == nil {
 		return
 	}
 
-	if cgp.ConnectTimeout == nil {
+	if p.ConnectTimeout == nil {
 		// same as the default from consul
-		cgp.ConnectTimeout = timeToPtr(5 * time.Second)
+		p.ConnectTimeout = timeToPtr(5 * time.Second)
 	}
 
-	if cgp.EnvoyDNSDiscoveryType == "" {
+	if p.EnvoyDNSDiscoveryType == "" {
 		// same as default from consul
-		cgp.EnvoyDNSDiscoveryType = "LOGICAL_DNS"
+		p.EnvoyDNSDiscoveryType = "LOGICAL_DNS"
 	}
 
-	if len(cgp.Config) == 0 {
-		cgp.Config = nil
+	if len(p.Config) == 0 {
+		p.Config = nil
 	}
 }
 
-func (cgp *ConsulGatewayProxy) Copy() *ConsulGatewayProxy {
-	if cgp == nil {
+func (p *ConsulGatewayProxy) Copy() *ConsulGatewayProxy {
+	if p == nil {
 		return nil
 	}
 
 	var config map[string]interface{} = nil
-	if cgp.Config != nil {
-		config = make(map[string]interface{}, len(cgp.Config))
-		for k, v := range cgp.Config {
+	if p.Config != nil {
+		config = make(map[string]interface{}, len(p.Config))
+		for k, v := range p.Config {
 			config[k] = v
 		}
 	}
 
 	return &ConsulGatewayProxy{
-		ConnectTimeout:                  timeToPtr(*cgp.ConnectTimeout),
-		EnvoyGatewayBindTaggedAddresses: cgp.EnvoyGatewayBindTaggedAddresses,
-		EnvoyGatewayBindAddresses:       cgp.EnvoyGatewayBindAddresses,
-		EnvoyGatewayNoDefaultBind:       cgp.EnvoyGatewayNoDefaultBind,
-		EnvoyDNSDiscoveryType:           cgp.EnvoyDNSDiscoveryType,
+		ConnectTimeout:                  timeToPtr(*p.ConnectTimeout),
+		EnvoyGatewayBindTaggedAddresses: p.EnvoyGatewayBindTaggedAddresses,
+		EnvoyGatewayBindAddresses:       p.EnvoyGatewayBindAddresses,
+		EnvoyGatewayNoDefaultBind:       p.EnvoyGatewayNoDefaultBind,
+		EnvoyDNSDiscoveryType:           p.EnvoyDNSDiscoveryType,
 		Config:                          config,
 	}
 }
@@ -392,6 +392,7 @@ func (tc *ConsulGatewayTLSConfig) Copy() *ConsulGatewayTLSConfig {
 	}
 }
 
+// ConsulIngressService is used to configure a service fronted by the ingress gateway.
 type ConsulIngressService struct {
 	// Namespace is not yet supported.
 	// Namespace string
@@ -400,29 +401,29 @@ type ConsulIngressService struct {
 	Hosts []string
 }
 
-func (cis *ConsulIngressService) Canonicalize() {
-	if cis == nil {
+func (s *ConsulIngressService) Canonicalize() {
+	if s == nil {
 		return
 	}
 
-	if len(cis.Hosts) == 0 {
-		cis.Hosts = nil
+	if len(s.Hosts) == 0 {
+		s.Hosts = nil
 	}
 }
 
-func (cis *ConsulIngressService) Copy() *ConsulIngressService {
-	if cis == nil {
+func (s *ConsulIngressService) Copy() *ConsulIngressService {
+	if s == nil {
 		return nil
 	}
 
 	var hosts []string = nil
-	if n := len(cis.Hosts); n > 0 {
+	if n := len(s.Hosts); n > 0 {
 		hosts = make([]string, n)
-		copy(hosts, cis.Hosts)
+		copy(hosts, s.Hosts)
 	}
 
 	return &ConsulIngressService{
-		Name:  cis.Name,
+		Name:  s.Name,
 		Hosts: hosts,
 	}
 }
@@ -435,37 +436,37 @@ type ConsulIngressListener struct {
 	Services []*ConsulIngressService
 }
 
-func (cil *ConsulIngressListener) Canonicalize() {
-	if cil == nil {
+func (l *ConsulIngressListener) Canonicalize() {
+	if l == nil {
 		return
 	}
 
-	if cil.Protocol == "" {
+	if l.Protocol == "" {
 		// same as default from consul
-		cil.Protocol = "tcp"
+		l.Protocol = "tcp"
 	}
 
-	if len(cil.Services) == 0 {
-		cil.Services = nil
+	if len(l.Services) == 0 {
+		l.Services = nil
 	}
 }
 
-func (cil *ConsulIngressListener) Copy() *ConsulIngressListener {
-	if cil == nil {
+func (l *ConsulIngressListener) Copy() *ConsulIngressListener {
+	if l == nil {
 		return nil
 	}
 
 	var services []*ConsulIngressService = nil
-	if n := len(cil.Services); n > 0 {
+	if n := len(l.Services); n > 0 {
 		services = make([]*ConsulIngressService, n)
 		for i := 0; i < n; i++ {
-			services[i] = cil.Services[i].Copy()
+			services[i] = l.Services[i].Copy()
 		}
 	}
 
 	return &ConsulIngressListener{
-		Port:     cil.Port,
-		Protocol: cil.Protocol,
+		Port:     l.Port,
+		Protocol: l.Protocol,
 		Services: services,
 	}
 }
@@ -482,37 +483,37 @@ type ConsulIngressConfigEntry struct {
 	Listeners []*ConsulIngressListener
 }
 
-func (cice *ConsulIngressConfigEntry) Canonicalize() {
-	if cice == nil {
+func (e *ConsulIngressConfigEntry) Canonicalize() {
+	if e == nil {
 		return
 	}
 
-	cice.TLS.Canonicalize()
+	e.TLS.Canonicalize()
 
-	if len(cice.Listeners) == 0 {
-		cice.Listeners = nil
+	if len(e.Listeners) == 0 {
+		e.Listeners = nil
 	}
 
-	for _, listener := range cice.Listeners {
+	for _, listener := range e.Listeners {
 		listener.Canonicalize()
 	}
 }
 
-func (cice *ConsulIngressConfigEntry) Copy() *ConsulIngressConfigEntry {
-	if cice == nil {
+func (e *ConsulIngressConfigEntry) Copy() *ConsulIngressConfigEntry {
+	if e == nil {
 		return nil
 	}
 
 	var listeners []*ConsulIngressListener = nil
-	if n := len(cice.Listeners); n > 0 {
+	if n := len(e.Listeners); n > 0 {
 		listeners = make([]*ConsulIngressListener, n)
 		for i := 0; i < n; i++ {
-			listeners[i] = cice.Listeners[i].Copy()
+			listeners[i] = e.Listeners[i].Copy()
 		}
 	}
 
 	return &ConsulIngressConfigEntry{
-		TLS:       cice.TLS.Copy(),
+		TLS:       e.TLS.Copy(),
 		Listeners: listeners,
 	}
 }

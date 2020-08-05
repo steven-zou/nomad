@@ -641,6 +641,8 @@ type ConsulConnect struct {
 
 	// SidecarTask is non-nil if sidecar overrides are set
 	SidecarTask *SidecarTask
+
+	// todo add gateway stuff ala api
 }
 
 // Copy the stanza recursively. Returns nil if nil.
@@ -669,13 +671,19 @@ func (c *ConsulConnect) Equals(o *ConsulConnect) bool {
 	return c.SidecarService.Equals(o.SidecarService)
 }
 
-// HasSidecar checks if a sidecar task is needed
+// HasSidecar checks if a sidecar task is configured.
 func (c *ConsulConnect) HasSidecar() bool {
 	return c != nil && c.SidecarService != nil
 }
 
+// IsNative checks if the service is connect native.
 func (c *ConsulConnect) IsNative() bool {
 	return c != nil && c.Native
+}
+
+func (c *ConsulConnect) IsGateway() bool {
+	// todo
+	return false
 }
 
 // Validate that the Connect stanza has exactly one of Native or sidecar.
@@ -689,7 +697,7 @@ func (c *ConsulConnect) Validate() error {
 	}
 
 	if !c.IsNative() && !c.HasSidecar() {
-		return fmt.Errorf("Consul Connect must be native or use a sidecar service")
+		return fmt.Errorf("Consul Connect must be native or use a sidecar service or be a gateway")
 	}
 
 	return nil
@@ -945,6 +953,15 @@ func (p *ConsulProxy) Copy() *ConsulProxy {
 	return newP
 }
 
+// opaqueMapsEqual compares map[string]interface{} commonly used for opaque
+//// config blocks. Interprets nil and {} as the same.
+func opaqueMapsEqual(a, b map[string]interface{}) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	return reflect.DeepEqual(a, b)
+}
+
 // Equals returns true if the structs are recursively equal.
 func (p *ConsulProxy) Equals(o *ConsulProxy) bool {
 	if p == nil || o == nil {
@@ -967,11 +984,8 @@ func (p *ConsulProxy) Equals(o *ConsulProxy) bool {
 		return false
 	}
 
-	// Avoid nil vs {} differences
-	if len(p.Config) != 0 && len(o.Config) != 0 {
-		if !reflect.DeepEqual(p.Config, o.Config) {
-			return false
-		}
+	if !opaqueMapsEqual(p.Config, o.Config) {
+		return false
 	}
 
 	return true
@@ -1075,4 +1089,296 @@ func (e *ConsulExposeConfig) Equals(o *ConsulExposeConfig) bool {
 		return e == o
 	}
 	return exposePathsEqual(e.Paths, o.Paths)
+}
+
+// ConsulGateway is used to configure one of the Consul Connect Gateway types.
+type ConsulGateway struct {
+	// Proxy is used to configure the Envoy instance acting as the gateway.
+	Proxy *ConsulGatewayProxy
+
+	// Ingress represents the Consul Configuration Entry for an Ingress Gateway.
+	Ingress *ConsulIngressConfigEntry
+
+	// Terminating is not yet supported.
+	// Terminating *ConsulTerminatingConfigEntry
+
+	// Mesh is not yet supported.
+	// Mesh *ConsulMeshConfigEntry
+}
+
+func (g *ConsulGateway) Copy() *ConsulGateway {
+	if g == nil {
+		return nil
+	}
+
+	return &ConsulGateway{
+		Proxy:   g.Proxy.Copy(),
+		Ingress: g.Ingress.Copy(),
+	}
+}
+
+func (g *ConsulGateway) Equals(o *ConsulGateway) bool {
+	if g == nil || o == nil {
+		return g == o
+	}
+
+	if !g.Proxy.Equals(o.Proxy) {
+		return false
+	}
+
+	if !g.Ingress.Equals(o.Ingress) {
+		return false
+	}
+
+	return true
+}
+
+// ConsulGatewayProxy is used to tune parameters of the proxy instance acting as
+// one of the forms of Connect gateways that Consul supports.
+//
+// https://www.consul.io/docs/connect/proxies/envoy#gateway-options
+type ConsulGatewayProxy struct {
+	ConnectTimeout                  *time.Duration
+	EnvoyGatewayBindTaggedAddresses bool
+	EnvoyGatewayBindAddresses       bool
+	EnvoyGatewayNoDefaultBind       bool
+	EnvoyDNSDiscoveryType           string
+	Config                          map[string]interface{}
+}
+
+func (p *ConsulGatewayProxy) Copy() *ConsulGatewayProxy {
+	if p == nil {
+		return nil
+	}
+
+	var config map[string]interface{} = nil
+	if p.Config != nil {
+		config = make(map[string]interface{}, len(p.Config))
+		for k, v := range p.Config {
+			config[k] = v
+		}
+	}
+
+	return &ConsulGatewayProxy{
+		ConnectTimeout:                  helper.TimeToPtr(*p.ConnectTimeout),
+		EnvoyGatewayBindTaggedAddresses: p.EnvoyGatewayBindTaggedAddresses,
+		EnvoyGatewayBindAddresses:       p.EnvoyGatewayBindAddresses,
+		EnvoyGatewayNoDefaultBind:       p.EnvoyGatewayNoDefaultBind,
+		EnvoyDNSDiscoveryType:           p.EnvoyDNSDiscoveryType,
+		Config:                          config,
+	}
+}
+
+func (p *ConsulGatewayProxy) Equals(o *ConsulGatewayProxy) bool {
+	if p == nil || o == nil {
+		return p == o
+	}
+
+	if p.ConnectTimeout != o.ConnectTimeout {
+		return false
+	}
+
+	if p.EnvoyGatewayBindTaggedAddresses != o.EnvoyGatewayBindTaggedAddresses {
+		return false
+	}
+
+	if p.EnvoyGatewayBindAddresses != o.EnvoyGatewayBindAddresses {
+		return false
+	}
+
+	if p.EnvoyGatewayNoDefaultBind != o.EnvoyGatewayNoDefaultBind {
+		return false
+	}
+
+	if p.EnvoyDNSDiscoveryType != o.EnvoyDNSDiscoveryType {
+		return false
+	}
+
+	if !opaqueMapsEqual(p.Config, o.Config) {
+		return false
+	}
+
+	return true
+}
+
+// ConsulGatewayTLSConfig is used to configure TLS for a gateway.
+type ConsulGatewayTLSConfig struct {
+	Enabled bool
+}
+
+func (c *ConsulGatewayTLSConfig) Copy() *ConsulGatewayTLSConfig {
+	if c == nil {
+		return nil
+	}
+
+	return &ConsulGatewayTLSConfig{
+		Enabled: c.Enabled,
+	}
+}
+
+func (c *ConsulGatewayTLSConfig) Equals(o *ConsulGatewayTLSConfig) bool {
+	if c == nil || o == nil {
+		return c == o
+	}
+
+	return c.Enabled == o.Enabled
+}
+
+// ConsulIngressService is used to configure a service fronted by the ingress gateway.
+type ConsulIngressService struct {
+	// Namespace is not yet supported.
+	// Namespace string
+	Name string
+
+	Hosts []string
+}
+
+func (s *ConsulIngressService) Copy() *ConsulIngressService {
+	if s == nil {
+		return nil
+	}
+
+	var hosts []string = nil
+	if n := len(s.Hosts); n > 0 {
+		hosts = make([]string, n)
+		copy(hosts, s.Hosts)
+	}
+
+	return &ConsulIngressService{
+		Name:  s.Name,
+		Hosts: hosts,
+	}
+}
+
+func (s *ConsulIngressService) Equals(o *ConsulIngressService) bool {
+	if s == nil || o == nil {
+		return s == o
+	}
+
+	if s.Name != o.Name {
+		return false
+	}
+
+	return helper.CompareSliceSetString(s.Hosts, o.Hosts)
+}
+
+// ConsulIngressListener is used to configure a listener on a Consul Ingress
+// Gateway.
+type ConsulIngressListener struct {
+	Port     int
+	Protocol string
+	Services []*ConsulIngressService
+}
+
+func (l *ConsulIngressListener) Copy() *ConsulIngressListener {
+	if l == nil {
+		return nil
+	}
+
+	var services []*ConsulIngressService = nil
+	if n := len(l.Services); n > 0 {
+		services = make([]*ConsulIngressService, n)
+		for i := 0; i < n; i++ {
+			services[i] = l.Services[i].Copy()
+		}
+	}
+
+	return &ConsulIngressListener{
+		Port:     l.Port,
+		Protocol: l.Protocol,
+		Services: services,
+	}
+}
+
+func (l *ConsulIngressListener) Equals(o *ConsulIngressListener) bool {
+	if l == nil || o == nil {
+		return l == o
+	}
+
+	if l.Port != o.Port {
+		return false
+	}
+
+	if l.Protocol != o.Protocol {
+		return false
+	}
+
+	return ingressServicesEqual(l.Services, o.Services)
+}
+
+func ingressServicesEqual(servicesA, servicesB []*ConsulIngressService) bool {
+	if len(servicesA) != len(servicesB) {
+		return false
+	}
+
+COMPARE: // order does not matter
+	for _, serviceA := range servicesA {
+		for _, serviceB := range servicesB {
+			if serviceA.Equals(serviceB) {
+				continue COMPARE
+			}
+		}
+		return false
+	}
+	return true
+}
+
+// ConsulIngressConfigEntry represents the Consul Configuration Entry type for
+// an Ingress Gateway.
+//
+// https://www.consul.io/docs/agent/config-entries/ingress-gateway#available-fields
+type ConsulIngressConfigEntry struct {
+	// Namespace is not yet supported.
+	// Namespace string
+
+	TLS       *ConsulGatewayTLSConfig
+	Listeners []*ConsulIngressListener
+}
+
+func (e *ConsulIngressConfigEntry) Copy() *ConsulIngressConfigEntry {
+	if e == nil {
+		return nil
+	}
+
+	var listeners []*ConsulIngressListener = nil
+	if n := len(e.Listeners); n > 0 {
+		listeners = make([]*ConsulIngressListener, n)
+		for i := 0; i < n; i++ {
+			listeners[i] = e.Listeners[i].Copy()
+		}
+	}
+
+	return &ConsulIngressConfigEntry{
+		TLS:       e.TLS.Copy(),
+		Listeners: listeners,
+	}
+}
+
+func (e *ConsulIngressConfigEntry) Equals(o *ConsulIngressConfigEntry) bool {
+	if e == nil || o == nil {
+		return e == o
+	}
+
+	if !e.TLS.Equals(o.TLS) {
+		return false
+	}
+
+	return ingressListenersEqual(e.Listeners, o.Listeners)
+}
+
+func ingressListenersEqual(listenersA, listenersB []*ConsulIngressListener) bool {
+	if len(listenersA) != len(listenersB) {
+		return false
+	}
+
+COMPARE: // order does not matter
+	for _, listenerA := range listenersA {
+		for _, listenerB := range listenersB {
+			if listenerA.Equals(listenerB) {
+				continue COMPARE
+			}
+		}
+		return false
+	}
+	return true
 }

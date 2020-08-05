@@ -6639,13 +6639,31 @@ func (k TaskKind) Value() string {
 	return ""
 }
 
-// IsConnectProxy returns true if the TaskKind is connect-proxy
-func (k TaskKind) IsConnectProxy() bool {
-	return strings.HasPrefix(string(k), ConnectProxyPrefix+":") && len(k) > len(ConnectProxyPrefix)+1
+func (k TaskKind) hasPrefix(prefix string) bool {
+	return strings.HasPrefix(string(k), prefix+":") && len(k) > len(prefix)+1
 }
 
+// IsConnectProxy returns true if the TaskKind is connect-proxy.
+func (k TaskKind) IsConnectProxy() bool {
+	return k.hasPrefix(ConnectProxyPrefix)
+}
+
+// IsConnectNative returns true if the TaskKind is connect-native.
 func (k TaskKind) IsConnectNative() bool {
-	return strings.HasPrefix(string(k), ConnectNativePrefix+":") && len(k) > len(ConnectNativePrefix)+1
+	return k.hasPrefix(ConnectNativePrefix)
+}
+
+func (k TaskKind) IsConnectIngress() bool {
+	return k.hasPrefix(ConnectIngressPrefix)
+}
+
+func (k TaskKind) IsAnyConnectGateway() bool {
+	switch {
+	case k.IsConnectIngress():
+		return true
+	default:
+		return false
+	}
 }
 
 const (
@@ -6656,6 +6674,22 @@ const (
 	// ConnectNativePrefix is the prefix used for fields referencing a Connect
 	// Native Task
 	ConnectNativePrefix = "connect-native"
+
+	// ConnectIngressPrefix is the prefix used for fields referencing a Consul
+	// Connect Ingress Gateway Proxy.
+	ConnectIngressPrefix = "connect-ingress"
+
+	// ConnectTerminatingPrefix is the prefix used for fields referencing a Consul
+	// Connect Terminating Gateway Proxy.
+	//
+	// Not yet supported.
+	// ConnectTerminatingPrefix = "connect-terminating"
+
+	// ConnectMeshPrefix is the prefix used for fields referencing a Consul Connect
+	// Mesh Gateway Proxy.
+	//
+	// Not yet supported.
+	// ConnectMeshPrefix = "connect-mesh"
 )
 
 // ValidateConnectProxyService checks that the service that is being
