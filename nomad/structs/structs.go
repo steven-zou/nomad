@@ -6218,9 +6218,9 @@ type Task struct {
 // UsesConnect is for conveniently detecting if the Task is able to make use
 // of Consul Connect features. This will be indicated in the TaskKind of the
 // Task, which exports known types of Tasks. UsesConnect will be true if the
-// task is a connect proxy, or if the task is connect native.
+// task is a connect proxy, connect native, or is a connect gateway.
 func (t *Task) UsesConnect() bool {
-	return t.Kind.IsConnectProxy() || t.Kind.IsConnectNative()
+	return t.Kind.IsConnectProxy() || t.Kind.IsConnectNative() || t.Kind.IsAnyConnectGateway()
 }
 
 func (t *Task) Copy() *Task {
