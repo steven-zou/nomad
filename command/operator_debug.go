@@ -94,7 +94,7 @@ Debug Options:
     in the current directory.
 
   -consul-http-addr=<addr>
-    The address and port of the Consul HTTP agent. Can be specified by CONSUL_HTTP_ADDR
+    The address and port of the Consul HTTP agent. Overrides the CONSUL_HTTP_ADDR environment variable.
 
   -consul-token=<token>
     Token used to query Consul. Overrides the CONSUL_HTTP_TOKEN environment
