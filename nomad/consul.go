@@ -36,6 +36,13 @@ const (
 )
 
 const (
+	// configEntriesRequestRateLimit is the maximum number of requests per second
+	// Nomad will make against Consul for operations on global Configuration Entry
+	// objects.
+	configEntriesRequestRateLimit rate.Limit = 10
+)
+
+const (
 	// ConsulPolicyWrite is the literal text of the policy field of a Consul Policy
 	// Rule that we check when validating an Operator Consul token against the
 	// necessary permissions for creating a Service Identity token for a given
@@ -434,4 +441,99 @@ func (s *Server) purgeSITokenAccessors(accessors []*structs.SITokenAccessor) err
 	request := structs.SITokenAccessorsRequest{Accessors: accessors}
 	_, _, err := s.raftApply(structs.ServiceIdentityAccessorDeregisterRequestType, request)
 	return err
+}
+
+// ConsulConfigsAPI is an abstraction over the consul/api.ConfigEntries API used by
+// Nomad Server
+type ConsulConfigsAPI interface {
+	// SetConfigEntry adds the given ConfigEntry to Consul, overwriting any
+	// previous entry.
+	SetConfigEntry(context.Context, *structs.ConsulIngressConfigEntry) error
+
+	// RemoveConfigEntry deletes the ConfigEntry of the given service from Consul.
+	RemoveConfigEntry(context.Context, string) error
+}
+
+type consulConfigsAPI struct {
+	// conifgsClient is the API subset of the real Consul client we need for
+	// managing Configuration Entries.
+	conifgsClient consul.ConfigAPI
+
+	// limiter is used to rate limit requests to Consul
+	limiter *rate.Limiter
+
+	// logger is used to log messages
+	logger hclog.Logger
+
+	// stopC is used to signal the agent is shutting down and the background
+	// config entry removal goroutine should stop
+	stopC chan struct{}
+
+	bgDeleteLock sync.Mutex
+	// bgPendingDelete is the set of consul config entries that need to be deleted.
+	// When a config entry is being added, first remove it from this set of entries,
+	// in case the user stopped a job and redeployed it, for example.
+	bgPendingDelete map[string]struct{}
+	// bgDeletionsStopped tracks whether the background deleter has been stopped, to
+	// avoid setting config entries that we would no longer be able to remove.
+	// Expected to be used on a Server shutdown.
+	bgDeletionsStopped bool
+}
+
+func NewConsulConfigsAPI(configsClient consul.ConfigAPI, logger hclog.Logger) *consulConfigsAPI {
+	c := &consulConfigsAPI{
+		conifgsClient: configsClient,
+		limiter:       rate.NewLimiter(configEntriesRequestRateLimit, int(configEntriesRequestRateLimit)),
+		logger:        logger,
+	}
+
+	go c.bgTryDeletesDaemon()
+
+	return c
+}
+
+func (c *consulConfigsAPI) Stop() {
+	c.bgDeleteLock.Lock()
+	defer c.bgDeleteLock.Unlock()
+
+	c.stopC <- struct{}{}
+	c.bgDeletionsStopped = true
+}
+
+// todo move these up
+const (
+	configEntriesRemovalInterval    = 5 * time.Minute
+	conifgEntriesMaxDeleteBatchSize = 100
+)
+
+func (c *consulConfigsAPI) bgTryDeletesDaemon() {
+	ticker := time.NewTicker(configEntriesRemovalInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.stopC:
+			return
+		case <-ticker.C:
+			c.bgTryDeletes()
+		}
+	}
+}
+
+func (c *consulConfigsAPI) bgTryDeletes() {
+	c.bgDeleteLock.Lock()
+	defer c.bgDeleteLock.Unlock()
+
+	// fast path, nothing to do
+	if len(c.bgPendingDelete) == 0 {
+		return
+	}
+
+	// borrow the safety logic from token reconciliation, though it is very unlikely
+	// to have a large number of configuration entries piled up for deletion
+	toDeleteBatchSize := len(c.bgPendingDelete)
+	if toDeleteBatchSize > conifgEntriesMaxDeleteBatchSize {
+		toDeleteBatchSize = conifgEntriesMaxDeleteBatchSize
+	}
+
 }
