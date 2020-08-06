@@ -103,32 +103,66 @@ func (envoyBootstrapHook) Name() string {
 	return envoyBootstrapHookName
 }
 
+func (_ *envoyBootstrapHook) extractNameAndKind(kind structs.TaskKind) (string, string, error) {
+	serviceKind := kind.Name()
+	serviceName := kind.Value()
+
+	switch serviceKind {
+	case structs.ConnectProxyPrefix, structs.ConnectIngressPrefix:
+	default:
+		return "", "", errors.New("envoy must be used as connect sidecar or gateway")
+	}
+
+	if serviceName == "" {
+		return "", "", errors.New("envoy must be configured with a service name")
+	}
+
+	return serviceKind, serviceName, nil
+}
+
+func (h *envoyBootstrapHook) lookupService(svcKind, svcName, tgName string) (*structs.Service, error) {
+	tg := h.alloc.Job.LookupTaskGroup(h.alloc.TaskGroup)
+
+	var service *structs.Service
+	for _, s := range tg.Services {
+		if s.Name == svcName {
+			service = s
+			break
+		}
+	}
+
+	if service == nil {
+		if svcKind == structs.ConnectProxyPrefix {
+			return nil, errors.New("connect proxy sidecar task exists but no services configured with a sidecar")
+		} else {
+			return nil, errors.New("connect gateway task exists but no service associated")
+		}
+	}
+
+	return service, nil
+}
+
+// Prestart creates an envoy bootstrap config file.
+//
+// Must be aware of both launching envoy as a sidecar proxy, as well as a connect gateway.
 func (h *envoyBootstrapHook) Prestart(ctx context.Context, req *interfaces.TaskPrestartRequest, resp *interfaces.TaskPrestartResponse) error {
-	if !req.Task.Kind.IsConnectProxy() {
+	if !req.Task.Kind.IsConnectProxy() && !req.Task.Kind.IsAnyConnectGateway() {
 		// Not a Connect proxy sidecar
 		resp.Done = true
 		return nil
 	}
 
-	serviceName := req.Task.Kind.Value()
-	if serviceName == "" {
-		return errors.New("connect proxy sidecar does not specify service name")
+	serviceKind, serviceName, err := h.extractNameAndKind(req.Task.Kind)
+	if err != nil {
+		return err
 	}
 
-	tg := h.alloc.Job.LookupTaskGroup(h.alloc.TaskGroup)
-
-	var service *structs.Service
-	for _, s := range tg.Services {
-		if s.Name == serviceName {
-			service = s
-			break
-		}
-	}
-	if service == nil {
-		return errors.New("connect proxy sidecar task exists but no services configured with a sidecar")
+	service, err := h.lookupService(serviceKind, serviceName, h.alloc.TaskGroup)
+	if err != nil {
+		return err
 	}
 
-	h.logger.Debug("bootstrapping Connect proxy sidecar", "task", req.Task.Name, "service", serviceName)
+	h.logger.Debug("bootstrapping Consul "+serviceKind, "task", req.Task.Name, "service", serviceName)
 
 	//TODO Should connect directly to Consul if the sidecar is running on the host netns.
 	grpcAddr := "unix://" + allocdir.AllocGRPCSocket
@@ -273,10 +307,16 @@ func (h *envoyBootstrapHook) execute(cmd *exec.Cmd) (string, error) {
 // configuration file for envoy.
 type envoyBootstrapArgs struct {
 	consulConfig   consulTransportConfig
-	sidecarFor     string
+	sidecarFor     string // sidecars only
 	grpcAddr       string
 	envoyAdminBind string
 	siToken        string
+	gateway        string // gateways only
+	address        string // gateways only
+
+	// todo(shoenig) thinking... consul has a -register (+ -service) option
+	//  for registering the gateway service for you, rather than expecting it
+	//  to already exist. We could try using that feature?
 }
 
 // args returns the CLI arguments consul needs in the correct order, with the
@@ -289,7 +329,18 @@ func (e envoyBootstrapArgs) args() []string {
 		"-http-addr", e.consulConfig.HTTPAddr,
 		"-admin-bind", e.envoyAdminBind,
 		"-bootstrap",
-		"-sidecar-for", e.sidecarFor,
+	}
+
+	if v := e.sidecarFor; v != "" {
+		arguments = append(arguments, "-sidecar-for", e.sidecarFor)
+	}
+
+	if v := e.gateway; v != "" {
+		arguments = append(arguments, "-gateway", e.gateway)
+	}
+
+	if v := e.address; v != "" {
+		arguments = append(arguments, "-address", e.address)
 	}
 
 	if v := e.siToken; v != "" {
