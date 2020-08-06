@@ -852,8 +852,15 @@ func (c *ServiceClient) serviceRegs(ops *operations, service *structs.Service, w
 	// This enables the consul UI to show that Nomad registered this service
 	meta["external-source"] = "nomad"
 
+	// Explicitly set the service kind in case this service represents a Connect gateway.
+	kind := api.ServiceKindTypical
+	if service.Connect.IsGateway() {
+		kind = api.ServiceKindIngressGateway
+	}
+
 	// Build the Consul Service registration request
 	serviceReg := &api.AgentServiceRegistration{
+		Kind:              kind,
 		ID:                id,
 		Name:              service.Name,
 		Tags:              tags,
