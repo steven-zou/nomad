@@ -365,7 +365,7 @@ func NewServer(config *Config, consulCatalog consul.CatalogAPI, consulConfigEntr
 	s.statsFetcher = NewStatsFetcher(s.logger, s.connPool, s.config.Region)
 
 	// Setup Consul (more)
-	s.setupConsul(consulConfigEntries, consulConfigEntries, consulACLs)
+	s.setupConsul(consulConfigEntries, consulACLs)
 
 	// Setup Vault
 	if err := s.setupVaultClient(); err != nil {
@@ -1059,7 +1059,7 @@ func (s *Server) setupNodeDrainer() {
 
 // setupConsul is used to setup Server specific consul components.
 func (s *Server) setupConsul(consulConfigEntries consul.ConfigAPI, consulACLs consul.ACLsAPI) {
-	// todo(shoenig)
+	s.consulConfigEntries = NewConsulConfigsAPI(consulConfigEntries, s.logger)
 	s.consulACLs = NewConsulACLsAPI(consulACLs, s.logger, s.purgeSITokenAccessors)
 }
 

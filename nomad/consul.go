@@ -535,5 +535,19 @@ func (c *consulConfigsAPI) bgTryDeletes() {
 	if toDeleteBatchSize > conifgEntriesMaxDeleteBatchSize {
 		toDeleteBatchSize = conifgEntriesMaxDeleteBatchSize
 	}
+	toDelete := make([]string, 0, toDeleteBatchSize)
+	for service := range c.bgPendingDelete {
+		toDelete = append(toDelete, service)
+	}
 
+}
+
+func (c *consulConfigsAPI) SetConfigEntry(context.Context, *structs.ConsulIngressConfigEntry) error {
+	// todo
+	return nil
+}
+
+func (c *consulConfigsAPI) RemoveConfigEntry(context.Context, string) error {
+	// todo
+	return nil
 }
