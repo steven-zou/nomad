@@ -544,7 +544,7 @@ func (c *OperatorDebugCommand) collectPeriodic(client *api.Client) {
 }
 
 // collectOperator captures some cluster meta information
-func (c *DebugCommand) collectOperator(dir string, client *api.Client) {
+func (c *OperatorDebugCommand) collectOperator(dir string, client *api.Client) {
 	rc, err := client.Operator().RaftGetConfiguration(nil)
 	c.writeJSON(dir, "operator-raft.json", rc, err)
 
@@ -690,7 +690,7 @@ func (c *OperatorDebugCommand) writeJSON(dir, file string, data interface{}, err
 
 // writeError writes a JSON error object to capture errors in the debug bundle without
 // reporting
-func (c *DebugCommand) writeError(dir, file string, err error) error {
+func (c *OperatorDebugCommand) writeError(dir, file string, err error) error {
 	bytes, err := json.Marshal(errorWrapper{Error: err.Error()})
 	if err != nil {
 		return err
