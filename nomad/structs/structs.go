@@ -4224,14 +4224,29 @@ func (j *Job) ConnectTasks() map[string][]string {
 	m := make(map[string][]string)
 	for _, tg := range j.TaskGroups {
 		for _, task := range tg.Tasks {
-			if task.Kind.IsConnectProxy() {
-				// todo(shoenig): when we support native, probably need to check
-				//  an additional TBD TaskKind as well.
+			if task.Kind.IsConnectProxy() ||
+				task.Kind.IsConnectNative() ||
+				task.Kind.IsAnyConnectGateway() {
 				m[tg.Name] = append(m[tg.Name], task.Name)
 			}
 		}
 	}
 	return m
+}
+
+func (j *Job) ConfigEntries() []*ConsulIngressConfigEntry {
+	var igEntries []*ConsulIngressConfigEntry
+	for _, tg := range j.TaskGroups {
+		for _, service := range tg.Services {
+			if service.Connect.IsGateway() {
+				if ig := service.Connect.Gateway.Ingress; ig != nil {
+					igEntries = append(igEntries, ig)
+				}
+				// imagine also accumulating other entry types in the future
+			}
+		}
+	}
+	return igEntries
 }
 
 // RequiredSignals returns a mapping of task groups to tasks to their required

@@ -277,6 +277,12 @@ func (j *Job) Register(args *structs.JobRegisterRequest, reply *structs.JobRegis
 		}
 	}
 
+	//
+
+	// Create/Update any Configuration Entries defined in the job
+	// (for now, only Ingress Gateway)
+	// todo loop
+
 	// Enforce Sentinel policies. Pass a copy of the job to prevent
 	// sentinel from altering it.
 	policyWarnings, err := j.enforceSubmitJob(args.PolicyOverride, args.Job.Copy())
