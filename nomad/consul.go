@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/command/agent/consul"
+	"github.com/hashicorp/nomad/helper"
 	"github.com/hashicorp/nomad/nomad/structs"
 	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
@@ -446,18 +447,18 @@ func (s *Server) purgeSITokenAccessors(accessors []*structs.SITokenAccessor) err
 // ConsulConfigsAPI is an abstraction over the consul/api.ConfigEntries API used by
 // Nomad Server
 type ConsulConfigsAPI interface {
-	// SetConfigEntry adds the given ConfigEntry to Consul, overwriting any
+	// SetIngressGatewayConfigEntry adds the given ConfigEntry to Consul, overwriting any
 	// previous entry.
-	SetConfigEntry(context.Context, *structs.ConsulIngressConfigEntry) error
+	SetIngressGatewayConfigEntry(ctx context.Context, service string, entry *structs.ConsulIngressConfigEntry) error
 
 	// RemoveConfigEntry deletes the ConfigEntry of the given service from Consul.
-	RemoveConfigEntry(context.Context, string) error
+	RemoveConfigEntry(ctx context.Context, service, kind string) bool
 }
 
 type consulConfigsAPI struct {
-	// conifgsClient is the API subset of the real Consul client we need for
+	// configsClient is the API subset of the real Consul client we need for
 	// managing Configuration Entries.
-	conifgsClient consul.ConfigAPI
+	configsClient consul.ConfigAPI
 
 	// limiter is used to rate limit requests to Consul
 	limiter *rate.Limiter
@@ -473,7 +474,9 @@ type consulConfigsAPI struct {
 	// bgPendingDelete is the set of consul config entries that need to be deleted.
 	// When a config entry is being added, first remove it from this set of entries,
 	// in case the user stopped a job and redeployed it, for example.
-	bgPendingDelete map[string]struct{}
+	//
+	// map from service name => config entry type
+	bgPendingDelete map[string]string
 	// bgDeletionsStopped tracks whether the background deleter has been stopped, to
 	// avoid setting config entries that we would no longer be able to remove.
 	// Expected to be used on a Server shutdown.
@@ -482,7 +485,7 @@ type consulConfigsAPI struct {
 
 func NewConsulConfigsAPI(configsClient consul.ConfigAPI, logger hclog.Logger) *consulConfigsAPI {
 	c := &consulConfigsAPI{
-		conifgsClient: configsClient,
+		configsClient: configsClient,
 		limiter:       rate.NewLimiter(configEntriesRequestRateLimit, int(configEntriesRequestRateLimit)),
 		logger:        logger,
 	}
@@ -500,7 +503,6 @@ func (c *consulConfigsAPI) Stop() {
 	c.bgDeletionsStopped = true
 }
 
-// todo move these up
 const (
 	configEntriesRemovalInterval    = 5 * time.Minute
 	conifgEntriesMaxDeleteBatchSize = 100
@@ -520,6 +522,28 @@ func (c *consulConfigsAPI) bgTryDeletesDaemon() {
 	}
 }
 
+// kind must be one of config entry types known by consul
+func (c *consulConfigsAPI) serialDelete(ctx context.Context, entries [][2]string) error {
+	// delete the config entries in serial rather than in parallel since there's
+	// typically going to be only 1 to delete at a time, and this is simpler
+
+	for _, entry := range entries {
+		service, kind := entry[0], entry[1]
+		c.logger.Trace("delete config entry", "service", service, "kind", kind)
+
+		// ensure we are under our rate limit
+		if err := c.limiter.Wait(ctx); err != nil {
+			return err
+		}
+
+		// finally have consul delete the config entry
+		_, err := c.configsClient.Delete(kind, service, nil)
+		return err
+	}
+
+	return nil
+}
+
 func (c *consulConfigsAPI) bgTryDeletes() {
 	c.bgDeleteLock.Lock()
 	defer c.bgDeleteLock.Unlock()
@@ -535,19 +559,99 @@ func (c *consulConfigsAPI) bgTryDeletes() {
 	if toDeleteBatchSize > conifgEntriesMaxDeleteBatchSize {
 		toDeleteBatchSize = conifgEntriesMaxDeleteBatchSize
 	}
-	toDelete := make([]string, 0, toDeleteBatchSize)
-	for service := range c.bgPendingDelete {
-		toDelete = append(toDelete, service)
+	toDelete := make([][2]string, 0, toDeleteBatchSize)
+	for service, kind := range c.bgPendingDelete {
+		toDelete = append(toDelete, [2]string{service, kind})
 	}
 
+	// have consul do the deletions
+	if err := c.serialDelete(context.Background(), toDelete); err != nil {
+		c.logger.Warn("background ConfigEntry deletion failed", "error", err)
+		return
+	}
+
+	// Track that the config entries were deleted successfully
+	nConfigEntries := float32(len(toDelete))
+	metrics.IncrCounter([]string{"nomad", "consul", "config_entries_deleted"}, nConfigEntries)
+
+	// reset the list of config entries to delete since we just deleted them
+	c.bgPendingDelete = nil
 }
 
-func (c *consulConfigsAPI) SetConfigEntry(context.Context, *structs.ConsulIngressConfigEntry) error {
-	// todo
-	return nil
+func (c *consulConfigsAPI) SetIngressGatewayConfigEntry(ctx context.Context, service string, entry *structs.ConsulIngressConfigEntry) error {
+	configEntry := convertIngressGatewayConfig(service, entry)
+	return c.setConfigEntry(ctx, service, configEntry)
 }
 
-func (c *consulConfigsAPI) RemoveConfigEntry(context.Context, string) error {
-	// todo
-	return nil
+// setConfigEntry will set the Configuration Entry of any type Consul supports.
+func (c *consulConfigsAPI) setConfigEntry(ctx context.Context, service string, entry api.ConfigEntry) error {
+	defer metrics.MeasureSince([]string{"nomad", "consul", "create_config_entry"}, time.Now())
+
+	// make sure the background deletion goroutine has not been stopped
+	c.bgDeleteLock.Lock()
+	stopped := c.bgDeletionsStopped
+	c.bgDeleteLock.Unlock()
+
+	if stopped {
+		return errors.New("client stopped and may not longer create config entries")
+	}
+
+	// ensure we are under our wait limit
+	if err := c.limiter.Wait(ctx); err != nil {
+		return err
+	}
+
+	_, _, err := c.configsClient.Set(entry, nil)
+	return err
+}
+
+func convertIngressGatewayConfig(service string, entry *structs.ConsulIngressConfigEntry) api.ConfigEntry {
+	listeners := make([]api.IngressListener, len(entry.Listeners))
+	for _, listener := range entry.Listeners {
+		services := make([]api.IngressService, len(listener.Services))
+		for _, service := range listener.Services {
+			services = append(services, api.IngressService{
+				Name:  service.Name,
+				Hosts: helper.CopySliceString(service.Hosts),
+			})
+		}
+		listeners = append(listeners, api.IngressListener{
+			Port:     listener.Port,
+			Protocol: listener.Protocol,
+			Services: services,
+		})
+	}
+
+	return &api.IngressGatewayConfigEntry{
+		Kind:      api.IngressGateway,
+		Name:      service,
+		TLS:       api.GatewayTLSConfig{Enabled: entry.TLS.Enabled},
+		Listeners: listeners,
+	}
+}
+
+// RemoveConfigEntry deletes the Configuration Entry from Consul for the given service and kind.
+//
+// A blocking attempt to delete the configuration entry is made first, and if that
+// fails, the config entry is stored for deletion later by the background deletion goroutine.
+//
+// A return value of true indicates the config entry deletion will be retried (intended
+// for use in tests).
+func (c *consulConfigsAPI) RemoveConfigEntry(ctx context.Context, service, kind string) bool {
+	defer metrics.MeasureSince([]string{"nomad", "consul", "delete_config_entry"}, time.Now())
+
+	if err := c.serialDelete(ctx, [][2]string{{service, kind}}); err != nil {
+		c.logger.Warn("failed to delete config entry")
+		c.storeForDeletion(service, kind)
+		return true
+	}
+
+	return false
+}
+
+func (c *consulConfigsAPI) storeForDeletion(service, kind string) {
+	c.bgDeleteLock.Lock()
+	defer c.bgDeleteLock.Unlock()
+
+	c.bgPendingDelete[service] = kind
 }
