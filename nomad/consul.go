@@ -579,12 +579,13 @@ func (c *consulConfigsAPI) bgTryDeletes() {
 }
 
 func (c *consulConfigsAPI) SetIngressGatewayConfigEntry(ctx context.Context, service string, entry *structs.ConsulIngressConfigEntry) error {
+	fmt.Println("SetIngressGatewayConfigEntry, service:", service, "entry:", entry)
 	configEntry := convertIngressGatewayConfig(service, entry)
-	return c.setConfigEntry(ctx, service, configEntry)
+	return c.setConfigEntry(ctx, configEntry)
 }
 
 // setConfigEntry will set the Configuration Entry of any type Consul supports.
-func (c *consulConfigsAPI) setConfigEntry(ctx context.Context, service string, entry api.ConfigEntry) error {
+func (c *consulConfigsAPI) setConfigEntry(ctx context.Context, entry api.ConfigEntry) error {
 	defer metrics.MeasureSince([]string{"nomad", "consul", "create_config_entry"}, time.Now())
 
 	// make sure the background deletion goroutine has not been stopped
@@ -601,14 +602,16 @@ func (c *consulConfigsAPI) setConfigEntry(ctx context.Context, service string, e
 		return err
 	}
 
+	fmt.Println("CC set config entry for service:", entry.GetName(), "kind:", entry.GetKind())
+	fmt.Printf("  underlying: %#v\n", entry.(*api.IngressGatewayConfigEntry))
 	_, _, err := c.configsClient.Set(entry, nil)
 	return err
 }
 
 func convertIngressGatewayConfig(service string, entry *structs.ConsulIngressConfigEntry) api.ConfigEntry {
-	listeners := make([]api.IngressListener, len(entry.Listeners))
+	var listeners []api.IngressListener = nil
 	for _, listener := range entry.Listeners {
-		services := make([]api.IngressService, len(listener.Services))
+		var services []api.IngressService = nil
 		for _, service := range listener.Services {
 			services = append(services, api.IngressService{
 				Name:  service.Name,

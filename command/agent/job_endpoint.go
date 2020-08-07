@@ -1312,7 +1312,7 @@ func apiConnectGatewayToStructs(in *api.ConsulGateway) *structs.ConsulGateway {
 
 	return &structs.ConsulGateway{
 		Proxy:   apiConnectGatewayProxyToStructs(in.Proxy),
-		Ingress: nil, // todo
+		Ingress: apiConnectIngressGatewayToStructs(in.Ingress),
 	}
 }
 
@@ -1371,7 +1371,7 @@ func apiConnectIngressListenerToStructs(in *api.ConsulIngressListener) *structs.
 	return &structs.ConsulIngressListener{
 		Port:     in.Port,
 		Protocol: in.Protocol,
-		Services: nil,
+		Services: apiConnectIngressServicesToStructs(in.Services),
 	}
 }
 

@@ -2,6 +2,7 @@ package structs
 
 import (
 	"crypto/sha1"
+	"encoding/json"
 	"fmt"
 	"hash"
 	"io"
@@ -1359,6 +1360,12 @@ type ConsulIngressConfigEntry struct {
 
 	TLS       *ConsulGatewayTLSConfig
 	Listeners []*ConsulIngressListener
+}
+
+// todo: cleanup
+func (e *ConsulIngressConfigEntry) String() string {
+	b, _ := json.Marshal(e)
+	return string(b)
 }
 
 func (e *ConsulIngressConfigEntry) Copy() *ConsulIngressConfigEntry {

@@ -4234,18 +4234,27 @@ func (j *Job) ConnectTasks() map[string][]string {
 	return m
 }
 
-func (j *Job) ConfigEntries() []*ConsulIngressConfigEntry {
-	var igEntries []*ConsulIngressConfigEntry
+// ConfigEntries accumulates the Consul Configuration Entries defined in task groups
+// of j.
+//
+// Currently Nomad only supports entries for connect ingress gateways.
+func (j *Job) ConfigEntries() map[string]*ConsulIngressConfigEntry {
+	fmt.Println("ConifgEntries begin")
+	igEntries := make(map[string]*ConsulIngressConfigEntry)
 	for _, tg := range j.TaskGroups {
+		fmt.Println("  tg:", tg.Name)
 		for _, service := range tg.Services {
+			fmt.Println("    service:", service.Name, "isGateway:", service.Connect.IsGateway())
 			if service.Connect.IsGateway() {
+				fmt.Println("    ig:", service.Connect.Gateway.Ingress)
 				if ig := service.Connect.Gateway.Ingress; ig != nil {
-					igEntries = append(igEntries, ig)
+					igEntries[service.Name] = ig
 				}
 				// imagine also accumulating other entry types in the future
 			}
 		}
 	}
+	fmt.Println("ConfigEntries exit:", igEntries)
 	return igEntries
 }
 
